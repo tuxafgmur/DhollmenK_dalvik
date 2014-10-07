@@ -244,8 +244,6 @@ static void *tryMalloc(size_t size)
      * been collected and cleared before throwing an OOME.
      */
 //TODO: wait for the finalizers from the previous GC to finish
-    LOGI_HEAP("Forcing collection of SoftReferences for %zu-byte allocation",
-            size);
     gcForMalloc(true);
     ptr = dvmHeapSourceAllocAndGrow(size);
     if (ptr != NULL) {
@@ -492,26 +490,11 @@ void dvmCollectGarbageInternal(const GcSpec* spec)
      */
 
     if (gcHeap->gcRunning) {
-        LOGW_HEAP("Attempted recursive GC");
         return;
-    }
-
-    // Trace the beginning of the top-level GC.
-    if (spec == GC_FOR_MALLOC) {
-        ATRACE_BEGIN("GC (alloc)");
-    } else if (spec == GC_CONCURRENT) {
-        ATRACE_BEGIN("GC (concurrent)");
-    } else if (spec == GC_EXPLICIT) {
-        ATRACE_BEGIN("GC (explicit)");
-    } else if (spec == GC_BEFORE_OOM) {
-        ATRACE_BEGIN("GC (before OOM)");
-    } else {
-        ATRACE_BEGIN("GC (unknown)");
     }
 
     gcHeap->gcRunning = true;
 
-    ATRACE_BEGIN("GC: Threads Suspended"); // Suspend A
     dvmSuspendAllThreads(SUSPEND_FOR_GC);
 
     /*
@@ -522,7 +505,6 @@ void dvmCollectGarbageInternal(const GcSpec* spec)
         oldThreadPriority = os_raiseThreadPriority();
     }
     if (gDvm.preVerify) {
-        LOGV_HEAP("Verifying roots and heap before GC");
         verifyRootsAndHeap();
     }
 
@@ -531,15 +513,12 @@ void dvmCollectGarbageInternal(const GcSpec* spec)
     /* Set up the marking context.
      */
     if (!dvmHeapBeginMarkStep(spec->isPartial)) {
-        ATRACE_END(); // Suspend A
-        ATRACE_END(); // Top-level GC
         LOGE_HEAP("dvmHeapBeginMarkStep failed; aborting");
         dvmAbort();
     }
 
     /* Mark the set of objects that are strongly reachable from the roots.
      */
-    LOGD_HEAP("Marking...");
     dvmHeapMarkRootSet();
 
     /* dvmHeapScanMarkedObjects() will build the lists of known
@@ -559,14 +538,12 @@ void dvmCollectGarbageInternal(const GcSpec* spec)
         dvmClearCardTable();
         dvmUnlockHeap();
         dvmResumeAllThreads(SUSPEND_FOR_GC);
-        ATRACE_END(); // Suspend A
     }
 
     /* Recursively mark any objects that marked objects point to strongly.
      * If we're not collecting soft references, soft-reachable
      * objects will also be marked.
      */
-    LOGD_HEAP("Recursing...");
     dvmHeapScanMarkedObjects();
 
     if (spec->isConcurrent) {
@@ -575,7 +552,6 @@ void dvmCollectGarbageInternal(const GcSpec* spec)
          * suspension.
          */
         dvmLockHeap();
-        ATRACE_BEGIN("GC: Threads Suspended"); // Suspend B
         dvmSuspendAllThreads(SUSPEND_FOR_GC);
         /*
          * As no barrier intercepts root updates, we conservatively
@@ -618,8 +594,6 @@ void dvmCollectGarbageInternal(const GcSpec* spec)
     dvmCompilerPerformSafePointChecks();
 #endif
 
-    LOGD_HEAP("Sweeping...");
-
     dvmHeapSweepSystemWeaks();
 
     /*
@@ -630,24 +604,19 @@ void dvmCollectGarbageInternal(const GcSpec* spec)
     dvmHeapSourceSwapBitmaps();
 
     if (gDvm.postVerify) {
-        LOGV_HEAP("Verifying roots and heap after GC");
         verifyRootsAndHeap();
     }
 
     if (spec->isConcurrent) {
         dvmUnlockHeap();
         dvmResumeAllThreads(SUSPEND_FOR_GC);
-        ATRACE_END(); // Suspend B
     }
     dvmHeapSweepUnmarkedObjects(spec->isPartial, spec->isConcurrent,
                                 &numObjectsFreed, &numBytesFreed);
-    LOGD_HEAP("Cleaning up...");
     dvmHeapFinishMarkStep();
     if (spec->isConcurrent) {
         dvmLockHeap();
     }
-
-    LOGD_HEAP("Done.");
 
     /* Now's a good time to adjust the heap size, since
      * we know what our utilization is.
@@ -661,11 +630,8 @@ void dvmCollectGarbageInternal(const GcSpec* spec)
     currFootprint = dvmHeapSourceGetValue(HS_FOOTPRINT, NULL, 0);
 
     dvmMethodTraceGCEnd();
-    LOGV_HEAP("GC finished");
 
     gcHeap->gcRunning = false;
-
-    LOGV_HEAP("Resuming threads");
 
     if (spec->isConcurrent) {
         /*
@@ -677,7 +643,6 @@ void dvmCollectGarbageInternal(const GcSpec* spec)
 
     if (!spec->isConcurrent) {
         dvmResumeAllThreads(SUSPEND_FOR_GC);
-        ATRACE_END(); // Suspend A
         /*
          * Restore the original thread scheduling priority if it was
          * changed at the start of the current garbage collection.
@@ -693,19 +658,15 @@ void dvmCollectGarbageInternal(const GcSpec* spec)
     dvmEnqueueClearedReferences(&gDvm.gcHeap->clearedReferences);
 
     if (gcHeap->ddmHpifWhen != 0) {
-        LOGD_HEAP("Sending VM heap info to DDM");
         dvmDdmSendHeapInfo(gcHeap->ddmHpifWhen, false);
     }
     if (gcHeap->ddmHpsgWhen != 0) {
-        LOGD_HEAP("Dumping VM heap to DDM");
         dvmDdmSendHeapSegments(false, false);
     }
     if (gcHeap->ddmNhsgWhen != 0) {
-        LOGD_HEAP("Dumping native heap to DDM");
         dvmDdmSendHeapSegments(false, true);
     }
 
-    ATRACE_END(); // Top-level GC
 }
 
 /*
@@ -730,7 +691,6 @@ void dvmCollectGarbageInternal(const GcSpec* spec)
  */
 bool dvmWaitForConcurrentGcToComplete()
 {
-    ATRACE_BEGIN("GC: Wait For Concurrent");
     bool waited = gDvm.gcHeap->gcRunning;
     Thread *self = dvmThreadSelf();
     assert(self != NULL);
@@ -739,6 +699,5 @@ bool dvmWaitForConcurrentGcToComplete()
         dvmWaitCond(&gDvm.gcHeapCond, &gDvm.gcHeapLock);
         dvmChangeStatus(self, oldStatus);
     }
-    ATRACE_END();
     return waited;
 }

@@ -1589,7 +1589,6 @@ static void verifyRegisterType(RegisterLine* registerLine, u4 vsrc,
     const RegType* insnRegs = registerLine->regTypes;
     RegType srcType = insnRegs[vsrc];
 
-    //ALOGD("check-reg v%u = %d", vsrc, checkType);
     switch (checkType) {
     case kRegTypeFloat:
     case kRegTypeBoolean:
@@ -1742,7 +1741,6 @@ static void markRefsAsInitialized(RegisterLine* registerLine, int insnRegCount,
             changed++;
         }
     }
-    //ALOGD("VFY: marked %d registers as initialized", changed);
     assert(changed > 0);
 
     return;
@@ -1771,8 +1769,6 @@ static void markUninitRefsAsInvalid(RegisterLine* registerLine,
         }
     }
 
-    //if (changed)
-    //    ALOGD("VFY: marked %d uninitialized registers as invalid", changed);
 }
 
 /*
@@ -3146,9 +3142,6 @@ static bool initRegisterTable(const VerifierData* vdata,
     storage = assignLineStorage(storage, &regTable->savedLine,
         trackMonitors, regTypeSize, monEntSize, stackSize);
 
-    //ALOGD("Tracking registers for [%d], total %d in %d units",
-    //    trackRegsFor, interestingCount-kExtraLines, insnsSize);
-
     assert(storage - (u1*)regTable->lineAlloc ==
         (int) (interestingCount * spacePerEntry));
     assert(regTable->registerLines[0].regTypes != NULL);
@@ -3242,9 +3235,6 @@ static bool replaceFailingInstruction(const Method* meth, InsnFlags* insnFlags,
     VerifyErrorRefType refType;
     u2* oldInsns = (u2*) meth->insns + insnIdx;
     int width;
-
-    if (gDvm.optimizing)
-        ALOGD("Weird: RFI during dexopt?");
 
     /*
      * Generate the new instruction out of the old.
@@ -3700,12 +3690,9 @@ static bool doCodeVerification(VerifierData* vdata, RegisterTable* regTable)
                 NULL, uninitMap, SHOW_REG_DETAILS);
         }
 
-        //ALOGI("process %s.%s %s %d",
-        //    meth->clazz->descriptor, meth->name, meth->descriptor, insnIdx);
         if (!verifyInstruction(meth, insnFlags, regTable, insnIdx,
                 uninitMap, &startGuess))
         {
-            //ALOGD("+++ %s bailing at %d", meth->name, insnIdx);
             goto bail;
         }
 
@@ -3749,25 +3736,7 @@ static bool doCodeVerification(VerifierData* vdata, RegisterTable* regTable)
                 if (deadStart < 0)
                     deadStart = insnIdx;
             } else if (deadStart >= 0) {
-                IF_ALOGD() {
-                    char* desc =
-                        dexProtoCopyMethodDescriptor(&meth->prototype);
-                    ALOGD("VFY: dead code 0x%04x-%04x in %s.%s %s",
-                        deadStart, insnIdx-1,
-                        meth->clazz->descriptor, meth->name, desc);
-                    free(desc);
-                }
-
                 deadStart = -1;
-            }
-        }
-        if (deadStart >= 0) {
-            IF_ALOGD() {
-                char* desc = dexProtoCopyMethodDescriptor(&meth->prototype);
-                ALOGD("VFY: dead code 0x%04x-%04x in %s.%s %s",
-                    deadStart, insnIdx-1,
-                    meth->clazz->descriptor, meth->name, desc);
-                free(desc);
             }
         }
     }
@@ -5828,8 +5797,6 @@ sput_1nr_common:
             goto bail;
         } else {
             /* replace opcode and continue on */
-            ALOGD("VFY: replacing opcode 0x%02x at 0x%04x",
-                decInsn.opcode, insnIdx);
             if (!replaceFailingInstruction(meth, insnFlags, insnIdx, failure)) {
                 LOG_VFY_METH(meth, "VFY:  rejecting opcode 0x%02x at 0x%04x",
                     decInsn.opcode, insnIdx);

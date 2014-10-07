@@ -487,8 +487,6 @@ ClassObject* dvmOptResolveClass(ClassObject* referrer, u4 classIdx,
 
     /* multiple definitions? */
     if (IS_CLASS_FLAG_SET(resClass, CLASS_MULTIPLE_DEFS)) {
-        ALOGI("DexOpt: not resolving ambiguous class '%s'",
-            resClass->descriptor);
         if (pFailure != NULL)
             *pFailure = VERIFY_ERROR_NO_CLASS;
         return NULL;
@@ -542,17 +540,11 @@ InstField* dvmOptResolveInstField(ClassObject* referrer, u4 ifieldIdx,
             dexStringById(pDvmDex->pDexFile, pFieldId->nameIdx),
             dexStringByTypeIdx(pDvmDex->pDexFile, pFieldId->typeIdx));
         if (resField == NULL) {
-            ALOGD("DexOpt: couldn't find field %s.%s",
-                resClass->descriptor,
-                dexStringById(pDvmDex->pDexFile, pFieldId->nameIdx));
             if (pFailure != NULL)
                 *pFailure = VERIFY_ERROR_NO_FIELD;
             return NULL;
         }
         if (dvmIsStaticField(resField)) {
-            ALOGD("DexOpt: wanted instance, got static for field %s.%s",
-                resClass->descriptor,
-                dexStringById(pDvmDex->pDexFile, pFieldId->nameIdx));
             if (pFailure != NULL)
                 *pFailure = VERIFY_ERROR_CLASS_CHANGE;
             return NULL;
@@ -569,9 +561,6 @@ InstField* dvmOptResolveInstField(ClassObject* referrer, u4 ifieldIdx,
     bool allowed = dvmCheckFieldAccess(referrer, (Field*)resField);
     untweakLoader(referrer, resField->clazz);
     if (!allowed) {
-        ALOGI("DexOpt: access denied from %s to field %s.%s",
-            referrer->descriptor, resField->clazz->descriptor,
-            resField->name);
         if (pFailure != NULL)
             *pFailure = VERIFY_ERROR_ACCESS_FIELD;
         return NULL;
@@ -617,15 +606,11 @@ StaticField* dvmOptResolveStaticField(ClassObject* referrer, u4 sfieldIdx,
         resField = (StaticField*)dvmFindFieldHier(resClass, fieldName,
                     dexStringByTypeIdx(pDvmDex->pDexFile, pFieldId->typeIdx));
         if (resField == NULL) {
-            ALOGD("DexOpt: couldn't find static field %s.%s",
-                resClass->descriptor, fieldName);
             if (pFailure != NULL)
                 *pFailure = VERIFY_ERROR_NO_FIELD;
             return NULL;
         }
         if (!dvmIsStaticField(resField)) {
-            ALOGD("DexOpt: wanted static, got instance for field %s.%s",
-                resClass->descriptor, fieldName);
             if (pFailure != NULL)
                 *pFailure = VERIFY_ERROR_CLASS_CHANGE;
             return NULL;
@@ -817,16 +802,12 @@ Method* dvmOptResolveMethod(ClassObject* referrer, u4 methodIdx,
         }
         if (methodType == METHOD_STATIC) {
             if (!dvmIsStaticMethod(resMethod)) {
-                ALOGD("DexOpt: wanted static, got instance for method %s.%s",
-                    resClass->descriptor, resMethod->name);
                 if (pFailure != NULL)
                     *pFailure = VERIFY_ERROR_CLASS_CHANGE;
                 return NULL;
             }
         } else if (methodType == METHOD_VIRTUAL) {
             if (dvmIsStaticMethod(resMethod)) {
-                ALOGD("DexOpt: wanted instance, got static for method %s.%s",
-                    resClass->descriptor, resMethod->name);
                 if (pFailure != NULL)
                     *pFailure = VERIFY_ERROR_CLASS_CHANGE;
                 return NULL;
@@ -894,10 +875,6 @@ static void rewriteVirtualInvoke(Method* method, u2* insns, Opcode newOpc)
 
     baseMethod = dvmOptResolveMethod(clazz, methodIdx, METHOD_VIRTUAL, NULL);
     if (baseMethod == NULL) {
-        ALOGD("DexOpt: unable to optimize virt call 0x%04x at 0x%02x in %s.%s",
-            methodIdx,
-            (int) (insns - method->insns), clazz->descriptor,
-            method->name);
         return;
     }
 
@@ -939,9 +916,6 @@ static bool rewriteInvokeObjectInit(Method* method, u2* insns)
 
     calledMethod = dvmOptResolveMethod(clazz, methodIdx, METHOD_DIRECT, NULL);
     if (calledMethod == NULL) {
-        ALOGD("DexOpt: unable to opt direct call 0x%04x at 0x%02x in %s.%s",
-            methodIdx, (int) (insns - method->insns),
-            clazz->descriptor, method->name);
         return false;
     }
 

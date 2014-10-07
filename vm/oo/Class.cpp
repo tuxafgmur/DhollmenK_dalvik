@@ -274,13 +274,9 @@ static void linearAllocTests()
     dvmLinearReadOnly(NULL, (char*)fiddle);
 
     char* str = (char*)dvmLinearStrdup(NULL, "This is a test!");
-    ALOGI("GOT: '%s'", str);
 
     /* try to check the bounds; allocator may round allocation size up */
     fiddle = (char*)dvmLinearAlloc(NULL, 12);
-    ALOGI("Should be 1: %d", dvmLinearAllocContains(fiddle, 12));
-    ALOGI("Should be 0: %d", dvmLinearAllocContains(fiddle, 13));
-    ALOGI("Should be 0: %d", dvmLinearAllocContains(fiddle - 128*1024, 1));
 
     dvmLinearAllocDump(NULL);
     dvmLinearFree(NULL, (char*)str);
@@ -520,7 +516,6 @@ static void dumpClassPath(const ClassPathEntry* cpe)
         default:            kindStr = "???";    break;
         }
 
-        ALOGI("  %2d: type=%s %s %p", idx, kindStr, cpe->fileName, cpe->ptr);
         if (CALC_CACHE_STATS && cpe->kind == kCpeJar) {
             JarFile* pJarFile = (JarFile*) cpe->ptr;
             DvmDex* pDvmDex = dvmGetJarFileDex(pJarFile);
@@ -611,7 +606,6 @@ static bool prepareCpe(ClassPathEntry* cpe, bool isBootstrap)
     struct stat sb;
 
     if (stat(cpe->fileName, &sb) < 0) {
-        ALOGD("Unable to stat classpath element '%s'", cpe->fileName);
         return false;
     }
     if (S_ISDIR(sb.st_mode)) {
@@ -641,7 +635,6 @@ static bool prepareCpe(ClassPathEntry* cpe, bool isBootstrap)
         ALOGE("Unknown type suffix '%s'", suffix);
     }
 
-    ALOGD("Unable to process classpath element '%s'", cpe->fileName);
     return false;
 }
 
@@ -781,7 +774,6 @@ static DvmDex* searchBootPathForClass(const char* descriptor,
         descriptor);
 
     while (cpe->kind != kCpeLastEntry) {
-        //ALOGV("+++  checking '%s' (%d)", cpe->fileName, cpe->kind);
 
         switch (cpe->kind) {
         case kCpeJar:
@@ -893,9 +885,6 @@ StringObject* dvmGetBootPathResource(const char* name, int idx)
     const ClassPathEntry* cpe = gDvm.bootClassPath;
     StringObject* urlObj = NULL;
 
-    ALOGV("+++ searching for resource '%s' in %d(%s)",
-        name, idx, cpe[idx].fileName);
-
     /* we could use direct array index, but I don't entirely trust "idx" */
     while (idx-- && cpe->kind != kCpeLastEntry)
         cpe++;
@@ -916,14 +905,12 @@ StringObject* dvmGetBootPathResource(const char* name, int idx)
         }
         break;
     case kCpeDex:
-        ALOGV("No resources in DEX files");
         goto bail;
     default:
         assert(false);
         goto bail;
     }
 
-    ALOGV("+++ using URL='%s'", urlBuf);
     urlObj = dvmCreateStringFromCstr(urlBuf);
 
 bail:
@@ -987,8 +974,6 @@ bool dvmLoaderInInitiatingList(const ClassObject* clazz, const Object* loader)
     int i;
     for (i = loaderList->initiatingLoaderCount-1; i >= 0; --i) {
         if (loaderList->initiatingLoaders[i] == loader) {
-            //ALOGI("+++ found initiating match %p in %s",
-            //    loader, clazz->descriptor);
             return true;
         }
     }
@@ -1045,9 +1030,6 @@ void dvmAddInitiatingLoader(ClassObject* clazz, Object* loader)
             }
             loaderList->initiatingLoaders = newList;
 
-            //ALOGI("Expanded init list to %d (%s)",
-            //    loaderList->initiatingLoaderCount+kInitLoaderInc,
-            //    clazz->descriptor);
         }
         loaderList->initiatingLoaders[loaderList->initiatingLoaderCount++] =
             loader;
@@ -1081,10 +1063,6 @@ static int hashcmpClassByCrit(const void* vclazz, const void* vcrit)
              (clazz->classLoader == pCrit->loader ||
               (pCrit->loader != NULL &&
                dvmLoaderInInitiatingList(clazz, pCrit->loader)) ));
-    //if (match)
-    //    ALOGI("+++ %s %p matches existing %s %p",
-    //        pCrit->descriptor, pCrit->loader,
-    //        clazz->descriptor, clazz->classLoader);
     return !match;
 }
 
@@ -1152,8 +1130,6 @@ ClassObject* dvmLookupClass(const char* descriptor, Object* loader,
      * the wait-for-class code centralized.
      */
     if (found && !unprepOkay && !dvmIsClassLinked((ClassObject*)found)) {
-        ALOGV("Ignoring not-yet-ready %s, using slow path",
-            ((ClassObject*)found)->descriptor);
         found = NULL;
     }
 
@@ -1183,12 +1159,6 @@ bool dvmAddClassToHash(ClassObject* clazz)
     found = dvmHashTableLookup(gDvm.loadedClasses, hash, clazz,
                 hashcmpClassByClass, true);
     dvmHashTableUnlock(gDvm.loadedClasses);
-
-    ALOGV("+++ dvmAddClassToHash '%s' %p (isnew=%d) --> %p",
-        clazz->descriptor, clazz->classLoader,
-        (found == (void*) clazz), clazz);
-
-    //dvmCheckClassTablePerf();
 
     /* can happen if two threads load the same class simultaneously */
     return (found == (void*) clazz);
@@ -1220,8 +1190,6 @@ void dvmCheckClassTablePerf()
  */
 static void removeClassFromHash(ClassObject* clazz)
 {
-    ALOGV("+++ removeClassFromHash '%s'", clazz->descriptor);
-
     u4 hash = dvmComputeUtf8Hash(clazz->descriptor);
 
     dvmHashTableLock(gDvm.loadedClasses);
@@ -1322,9 +1290,6 @@ ClassObject* dvmFindClassNoInit(const char* descriptor,
 static ClassObject* findClassFromLoaderNoInit(const char* descriptor,
     Object* loader)
 {
-    //ALOGI("##### findClassFromLoaderNoInit (%s,%p)",
-    //        descriptor, loader);
-
     Thread* self = dvmThreadSelf();
 
     assert(loader != NULL);
@@ -1381,10 +1346,6 @@ static ClassObject* findClassFromLoaderNoInit(const char* descriptor,
         dvmMethodTraceClassPrepEnd();
         Object* excep = dvmGetException(self);
         if (excep != NULL) {
-#if DVM_SHOW_EXCEPTION >= 2
-            ALOGD("NOTE: loadClass '%s' %p threw exception %s",
-                 dotName, loader, excep->clazz->descriptor);
-#endif
             dvmAddTrackedAlloc(excep, self);
             dvmClearException(self);
             dvmThrowChainedNoClassDefFoundError(descriptor, excep);
@@ -1622,8 +1583,6 @@ static ClassObject* findClassNoInit(const char* descriptor, Object* loader,
 #endif
             clazz = NULL;
             if (gDvm.optimizing) {
-                /* happens with "external" libs */
-                ALOGV("Link of class '%s' failed", descriptor);
             } else {
                 ALOGW("Link of class '%s' failed", descriptor);
             }
@@ -1688,8 +1647,6 @@ got_class:
                 clazz = NULL;
                 goto bail;
             }
-            //ALOGI("WAITING  for '%s' (owner=%d)",
-            //    clazz->descriptor, clazz->initThreadId);
             while (!dvmIsClassLinked(clazz) && clazz->status != CLASS_ERROR) {
                 dvmObjectWait(self, (Object*) clazz, 0, 0, false);
             }
@@ -1713,9 +1670,6 @@ got_class:
     assert(dvmIsClassObject(clazz));
     assert(clazz == gDvm.classJavaLangObject || clazz->super != NULL);
     if (!dvmIsInterfaceClass(clazz)) {
-        //ALOGI("class=%s vtableCount=%d, virtualMeth=%d",
-        //    clazz->descriptor, clazz->vtableCount,
-        //    clazz->virtualMethodCount);
         assert(clazz->vtableCount >= clazz->virtualMethodCount);
     }
 
@@ -1970,11 +1924,6 @@ static ClassObject* loadClassFromDex(DvmDex* pDvmDex,
     assert((pDvmDex != NULL) && (pClassDef != NULL));
     pDexFile = pDvmDex->pDexFile;
 
-    if (gDvm.verboseClass) {
-        ALOGV("CLASS: loading '%s'...",
-            dexGetClassDescriptor(pDexFile, pClassDef));
-    }
-
     pEncodedData = dexGetClassData(pDexFile, pClassDef);
 
     if (pEncodedData != NULL) {
@@ -1986,11 +1935,6 @@ static ClassObject* loadClassFromDex(DvmDex* pDvmDex,
 
     result = loadClassFromDex0(pDvmDex, pClassDef, &header, pEncodedData,
             classLoader);
-
-    if (gDvm.verboseClass && (result != NULL)) {
-        ALOGI("[Loaded %s from DEX %p (cl=%p)]",
-            result->descriptor, pDvmDex, classLoader);
-    }
 
     return result;
 }
@@ -2248,8 +2192,6 @@ void dvmMakeCodeReadWrite(Method* meth)
     assert(!dvmIsNativeMethod(meth) && !dvmIsAbstractMethod(meth));
 
     size_t dexCodeSize = dexGetDexCodeSize(methodDexCode);
-    ALOGD("Making a copy of %s.%s code (%d bytes)",
-        meth->clazz->descriptor, meth->name, dexCodeSize);
 
     DexCode* newCode =
         (DexCode*) dvmLinearAlloc(meth->clazz->classLoader, dexCodeSize);
@@ -2268,7 +2210,6 @@ void dvmMakeCodeReadWrite(Method* meth)
 void dvmMakeCodeReadOnly(Method* meth)
 {
     DexCode* methodDexCode = (DexCode*) dvmGetMethodCode(meth);
-    ALOGV("+++ marking %p read-only", methodDexCode);
     dvmLinearReadOnly(meth->clazz->classLoader, methodDexCode);
 }
 #endif
@@ -2523,8 +2464,6 @@ bool dvmLinkClass(ClassObject* clazz)
     assert(clazz != NULL);
     assert(clazz->descriptor != NULL);
     assert(clazz->status == CLASS_IDX || clazz->status == CLASS_LOADED);
-    if (gDvm.verboseClass)
-        ALOGV("CLASS: linking '%s'...", clazz->descriptor);
 
     assert(gDvm.classJavaLangClass != NULL);
     assert(clazz->clazz == gDvm.classJavaLangClass);
@@ -2585,8 +2524,6 @@ bool dvmLinkClass(ClassObject* clazz)
                 assert(dvmCheckException(dvmThreadSelf()));
                 if (gDvm.optimizing) {
                     /* happens with "external" libs */
-                    ALOGV("Unable to resolve superclass of %s (%d)",
-                         clazz->descriptor, superclassIdx);
                 } else {
                     ALOGW("Unable to resolve superclass of %s (%d)",
                          clazz->descriptor, superclassIdx);
@@ -2615,16 +2552,6 @@ bool dvmLinkClass(ClassObject* clazz)
                     const char* classDescriptor;
                     classDescriptor =
                         dexStringByTypeIdx(pDexFile, interfaceIdxArray[i]);
-                    if (gDvm.optimizing) {
-                        /* happens with "external" libs */
-                        ALOGV("Failed resolving %s interface %d '%s'",
-                             clazz->descriptor, interfaceIdxArray[i],
-                             classDescriptor);
-                    } else {
-                        ALOGI("Failed resolving %s interface %d '%s'",
-                             clazz->descriptor, interfaceIdxArray[i],
-                             classDescriptor);
-                    }
                     goto bail;
                 }
 
@@ -2834,8 +2761,6 @@ bool dvmLinkClass(ClassObject* clazz)
     else
         clazz->status = CLASS_RESOLVED;
     okay = true;
-    if (gDvm.verboseClass)
-        ALOGV("CLASS: linked '%s'", clazz->descriptor);
 
     /*
      * We send CLASS_PREPARE events to the debugger from here.  The
@@ -2880,8 +2805,6 @@ static bool createVtable(ClassObject* clazz)
     int i;
 
     if (clazz->super != NULL) {
-        //ALOGI("SUPER METHODS %d %s->%s", clazz->super->vtableCount,
-        //    clazz->descriptor, clazz->super->descriptor);
     }
 
     /* the virtual methods we define, plus the superclass vtable size */
@@ -2894,8 +2817,6 @@ static bool createVtable(ClassObject* clazz)
          */
         assert(strcmp(clazz->descriptor, "Ljava/lang/Object;") == 0);
     }
-    //ALOGD("+++ max vmethods for '%s' is %d", clazz->descriptor, maxCount);
-
     /*
      * Over-allocate the table, then realloc it down if necessary.  So
      * long as we don't allocate anything in between we won't cause
@@ -2946,8 +2867,6 @@ static bool createVtable(ClassObject* clazz)
 
                     clazz->vtable[si] = localMeth;
                     localMeth->methodIndex = (u2) si;
-                    //ALOGV("+++   override %s.%s (slot %d)",
-                    //    clazz->descriptor, localMeth->name, si);
                     break;
                 }
             }
@@ -2957,9 +2876,6 @@ static bool createVtable(ClassObject* clazz)
                 clazz->vtable[actualCount] = localMeth;
                 localMeth->methodIndex = (u2) actualCount;
                 actualCount++;
-
-                //ALOGV("+++   add method %s.%s",
-                //    clazz->descriptor, localMeth->name);
             }
         }
 
@@ -3258,16 +3174,6 @@ static bool createIftable(ClassObject* clazz)
                 }
             }
             if (j < 0) {
-                IF_ALOGV() {
-                    char* desc =
-                        dexProtoCopyMethodDescriptor(&imeth->prototype);
-                    ALOGV("No match for '%s' '%s' in '%s' (creating miranda)",
-                            imeth->name, desc, clazz->descriptor);
-                    free(desc);
-                }
-                //dvmThrowRuntimeException("Miranda!");
-                //return false;
-
                 if (mirandaCount == mirandaAlloc) {
                     mirandaAlloc += 8;
                     if (mirandaList == NULL) {
@@ -3315,8 +3221,6 @@ static bool createIftable(ClassObject* clazz)
 
                 /* if non-duplicate among Mirandas, add to Miranda list */
                 if (mir == mirandaCount) {
-                    //ALOGV("MIRANDA: holding '%s' in slot %d",
-                    //    imeth->name, mir);
                     mirandaList[mirandaCount++] = imeth;
                 }
             }
@@ -3341,8 +3245,6 @@ static bool createIftable(ClassObject* clazz)
              * massive collection of Miranda methods and a lot of wasted
              * space, sometimes enough to blow out the LinearAlloc cap.
              */
-            ALOGD("Note: class %s has %d unimplemented (abstract) methods",
-                clazz->descriptor, mirandaCount);
         }
 
         /*
@@ -3572,11 +3474,6 @@ static bool computeFieldOffsets(ClassObject* clazz)
 
     LOGVV("--- computeFieldOffsets '%s'", clazz->descriptor);
 
-    //ALOGI("OFFSETS fieldCount=%d", clazz->ifieldCount);
-    //ALOGI("dataobj, instance: %d", offsetof(DataObject, instanceData));
-    //ALOGI("classobj, access: %d", offsetof(ClassObject, accessFlags));
-    //ALOGI("super=%p, fieldOffset=%d", clazz->super, fieldOffset);
-
     /*
      * Start by moving all reference fields to the front.
      */
@@ -3677,7 +3574,6 @@ static bool computeFieldOffsets(ClassObject* clazz)
                 }
             }
             if (!found) {
-                ALOGV("  +++ inserting pad field in '%s'", clazz->descriptor);
                 fieldOffset += sizeof(u4);
             }
         }
@@ -3776,9 +3672,6 @@ static bool computeFieldOffsets(ClassObject* clazz)
  */
 static void throwEarlierClassFailure(ClassObject* clazz)
 {
-    ALOGI("Rejecting re-init on previously-failed class %s v=%p",
-        clazz->descriptor, clazz->verifyErrorClass);
-
     if (clazz->verifyErrorClass == NULL) {
         dvmThrowNoClassDefFoundError(clazz->descriptor);
     } else {
@@ -3805,7 +3698,6 @@ static void initSFields(ClassObject* clazz)
     }
     if (clazz->pDvmDex == NULL) {
         /* generated class; any static fields should already be set up */
-        ALOGV("Not initializing static fields in %s", clazz->descriptor);
         return;
     }
     pDexFile = clazz->pDvmDex->pDexFile;
@@ -4277,14 +4169,9 @@ bool dvmInitClass(ClassObject* clazz)
              clazz->classLoader == NULL))
         {
             /* advance to "verified" state */
-            ALOGV("+++ not verifying class %s (cl=%p)",
-                clazz->descriptor, clazz->classLoader);
             clazz->status = CLASS_VERIFIED;
             goto noverify;
         }
-
-        if (!gDvm.optimizing)
-            ALOGV("+++ late verify on %s", clazz->descriptor);
 
         /*
          * We're not supposed to optimize an unverified class, but during
@@ -4329,8 +4216,6 @@ noverify:
      * system classes, and dexopt runs single-threaded.
      */
     if (!IS_CLASS_FLAG_SET(clazz, CLASS_ISOPTIMIZED) && !gDvm.optimizing) {
-        ALOGV("+++ late optimize on %s (pv=%d)",
-            clazz->descriptor, IS_CLASS_FLAG_SET(clazz, CLASS_ISPREVERIFIED));
         bool essentialOnly = (gDvm.dexOptMode != OPTIMIZE_MODE_FULL);
         dvmOptimizeClass(clazz, essentialOnly);
         SET_CLASS_FLAG(clazz, CLASS_ISOPTIMIZED);
@@ -4345,7 +4230,6 @@ noverify:
     while (clazz->status == CLASS_INITIALIZING) {
         /* we caught somebody else in the act; was it us? */
         if (clazz->initThreadId == self->threadId) {
-            //ALOGV("HEY: found a recursive <clinit>");
             goto bail_unlock;
         }
 
@@ -4367,8 +4251,6 @@ noverify:
          * was set), bail out.
          */
         if (dvmCheckException(self)) {
-            ALOGI("Class init of '%s' failing with wait() exception",
-                clazz->descriptor);
             /*
              * TODO: this is bogus, because it means the two threads have a
              * different idea of the class status.  We need to flag the
@@ -4387,7 +4269,6 @@ noverify:
             goto bail_unlock;
         }
         if (clazz->status == CLASS_INITIALIZING) {
-            ALOGI("Waiting again for class init");
             continue;
         }
         assert(clazz->status == CLASS_INITIALIZED ||
@@ -4497,8 +4378,6 @@ noverify:
          * need to throw an ExceptionInInitializerError, but we want to
          * tuck the original exception into the "cause" field.
          */
-        ALOGW("Exception %s thrown while initializing %s",
-            (dvmGetException(self)->clazz)->descriptor, clazz->descriptor);
         dvmThrowExceptionInInitializerError();
         //ALOGW("+++ replaced");
 
@@ -4600,12 +4479,6 @@ void dvmSetRegisterMap(Method* method, const RegisterMap* pMap)
 {
     ClassObject* clazz = method->clazz;
 
-    if (method->registerMap != NULL) {
-        /* unexpected during class loading, okay on first use (uncompress) */
-        ALOGV("NOTE: registerMap already set for %s.%s",
-            method->clazz->descriptor, method->name);
-        /* keep going */
-    }
     assert(!dvmIsNativeMethod(method) && !dvmIsAbstractMethod(method));
 
     /* might be virtual or direct */
@@ -4834,14 +4707,6 @@ int dvmGetNumLoadedClasses()
  */
 void dvmDumpLoaderStats(const char* msg)
 {
-    ALOGV("VM stats (%s): cls=%d/%d meth=%d ifld=%d sfld=%d linear=%d",
-        msg, gDvm.numLoadedClasses, dvmHashTableNumEntries(gDvm.loadedClasses),
-        gDvm.numDeclaredMethods, gDvm.numDeclaredInstFields,
-        gDvm.numDeclaredStaticFields, gDvm.pBootLoaderAlloc->curOffset);
-#ifdef COUNT_PRECISE_METHODS
-    ALOGI("GC precise methods: %d",
-        dvmPointerSetGetCount(gDvm.preciseMethods));
-#endif
 }
 
 /*

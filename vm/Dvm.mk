@@ -59,12 +59,11 @@ ifeq ($(dvm_make_debug_vm),true)
   LOCAL_CFLAGS += -DWITH_EXTRA_OBJECT_VALIDATION
   LOCAL_CFLAGS += -DWITH_TRACKREF_CHECKS
   LOCAL_CFLAGS += -DWITH_EXTRA_GC_CHECKS=1
-  #LOCAL_CFLAGS += -DCHECK_MUTEX
   LOCAL_CFLAGS += -DDVM_SHOW_EXCEPTION=3
   # add some extra stuff to make it easier to examine with GDB
   LOCAL_CFLAGS += -DEASY_GDB
   # overall config may be for a "release" build, so reconfigure these
-  LOCAL_CFLAGS += -UNDEBUG -DDEBUG=1 -DLOG_NDEBUG=1 -DWITH_DALVIK_ASSERT
+  LOCAL_CFLAGS += -UNDEBUG -DDEBUG=0 -DLOG_NDEBUG=0 -DWITH_DALVIK_ASSERT
 else  # !dvm_make_debug_vm
   #
   # "Performance" profile:

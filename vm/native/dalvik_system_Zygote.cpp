@@ -397,8 +397,6 @@ static void Dalvik_dalvik_system_Zygote_fork(const u4* args, JValue* pResult)
  */
 static void enableDebugFeatures(u4 debugFlags)
 {
-    ALOGV("debugFlags is 0x%02x", debugFlags);
-
     gDvm.jdwpAllowed = ((debugFlags & DEBUG_ENABLE_DEBUGGER) != 0);
 
     if ((debugFlags & DEBUG_ENABLE_CHECKJNI) != 0) {
@@ -539,7 +537,6 @@ static void detachDescriptors(ArrayObject* fdsToClose) {
             ALOG(LOG_ERROR, ZYGOTE_LOG_TAG, "Failed to open /dev/null");
             dvmAbort();
         }
-        ALOG(LOG_VERBOSE, ZYGOTE_LOG_TAG, "Switching descriptor %d to /dev/null", ar[i]);
         if (dup2(devnull, ar[i]) < 0) {
             ALOG(LOG_ERROR, ZYGOTE_LOG_TAG, "Failed dup2() on descriptor %d", ar[i]);
             dvmAbort();

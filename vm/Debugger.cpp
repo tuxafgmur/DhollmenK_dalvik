@@ -223,9 +223,6 @@ static ObjectId registerObject(const Object* obj, RegistryType type, bool reg)
     dvmHashTableLock(gDvm.dbgRegistry);
     if (!gDvm.debuggerConnected) {
         /* debugger has detached while we were doing stuff? */
-        ALOGI("ignoring registerObject request in thread=%d",
-            dvmThreadSelf()->threadId);
-        //dvmAbort();
         goto bail;
     }
 
@@ -310,7 +307,6 @@ static Object* objectIdToObject(ObjectId id)
 void dvmDbgRegisterObjectId(ObjectId id)
 {
     Object* obj = (Object*)(u4) id;
-    ALOGV("+++ registering %p (%s)", obj, obj->clazz->descriptor);
     registerObject(obj, kObjectId, true);
 }
 
@@ -378,7 +374,6 @@ void dvmDbgConnected()
 {
     assert(!gDvm.debuggerConnected);
 
-    ALOGV("JDWP has attached");
     assert(dvmHashTableNumEntries(gDvm.dbgRegistry) == 0);
     gDvm.debuggerConnected = true;
 }
@@ -395,7 +390,6 @@ void dvmDbgActive()
     if (gDvm.debuggerActive)
         return;
 
-    ALOGI("Debugger is active");
     dvmInitBreakpoints();
     gDvm.debuggerActive = true;
     dvmEnableAllSubMode(kSubModeDebuggerActive);
@@ -424,12 +418,6 @@ void dvmDbgDisconnected()
 
     dvmHashTableLock(gDvm.dbgRegistry);
     gDvm.debuggerConnected = false;
-
-    ALOGD("Debugger has detached; object registry had %d entries",
-        dvmHashTableNumEntries(gDvm.dbgRegistry));
-    //int i;
-    //for (i = 0; i < gDvm.dbgRegistryNext; i++)
-    //    LOGVV("%4d: 0x%llx", i, gDvm.dbgRegistryTable[i]);
 
     dvmHashTableClear(gDvm.dbgRegistry);
     dvmHashTableUnlock(gDvm.dbgRegistry);
@@ -489,7 +477,6 @@ void dvmDbgExit(int status)
 {
     // TODO? invoke System.exit() to perform exit processing; ends up
     // in System.exitInternal(), which can call JNI exit hook
-    ALOGI("GC lifetime allocation: %d bytes", gDvm.allocProf.allocCount);
     if (CALC_CACHE_STATS) {
         dvmDumpAtomicCacheStats(gDvm.instanceofCache);
         dvmDumpBootClassPath();
@@ -1017,9 +1004,6 @@ bool dvmDbgOutputArray(ObjectId arrayId, int firstIndex, int count,
         pObjects = (Object**) data;
         pObjects += firstIndex;
 
-        ALOGV("    --> copying %d object IDs", count);
-        //assert(tag == JT_OBJECT);     // could be object or "refined" type
-
         for (i = 0; i < count; i++, pObjects++) {
             u1 thisTag;
             if (*pObjects != NULL)
@@ -1057,8 +1041,6 @@ bool dvmDbgSetArrayElements(ObjectId arrayId, int firstIndex, int count,
     if (isTagPrimitive(tag)) {
         int width = dvmDbgGetTagWidth(tag);
 
-        ALOGV("    --> setting %d '%c' width=%d", count, tag, width);
-
         copyValuesFromBE(data + firstIndex*width, buf, count, width);
     } else {
         Object** pObjects;
@@ -1066,8 +1048,6 @@ bool dvmDbgSetArrayElements(ObjectId arrayId, int firstIndex, int count,
 
         pObjects = (Object**) data;
         pObjects += firstIndex;
-
-        ALOGV("    --> setting %d objects", count);
 
         /* should do array type check here */
         for (i = 0; i < count; i++) {
@@ -1355,7 +1335,6 @@ static int tweakSlot(int slot, const char* name)
     else if (slot == 0)                 // always remap slot 0
         newSlot = kSlot0Sub;
 
-    ALOGV("untweak: %d to %d", slot, newSlot);
     return newSlot;
 }
 
@@ -1374,7 +1353,6 @@ static int untweakSlot(int slot, const void* framePtr)
         newSlot = method->registersSize - method->insSize;
     }
 
-    ALOGV("untweak: %d to %d", slot, newSlot);
     return newSlot;
 }
 
@@ -1385,10 +1363,6 @@ static void variableTableCb (void *cnxt, u2 reg, u4 startAddress,
     DebugCallbackContext *pContext = (DebugCallbackContext *)cnxt;
 
     reg = (u2) tweakSlot(reg, name);
-
-    ALOGV("    %2d: %d(%d) '%s' '%s' slot=%d",
-        pContext->numItems, startAddress, endAddress - startAddress,
-        name, descriptor, reg);
 
     expandBufAdd8BE(pContext->pReply, startAddress);
     expandBufAddUtf8String(pContext->pReply, (const u1*)name);
@@ -1472,9 +1446,7 @@ void dvmDbgGetFieldValue(ObjectId objectId, FieldId fieldId, ExpandBuf* pReply)
         tag = tagFromObject(objVal);
         expandBufAdd1(pReply, tag);
         expandBufAddObjectId(pReply, objectToObjectId(objVal));
-        ALOGV("    --> ifieldId %x --> tag '%c' %p", fieldId, tag, objVal);
     } else {
-        ALOGV("    --> ifieldId %x --> tag '%c'", fieldId, tag);
         expandBufAdd1(pReply, tag);
 
         switch (tag) {
@@ -1568,11 +1540,9 @@ void dvmDbgGetStaticFieldValue(RefTypeId refTypeId, FieldId fieldId,
         tag = tagFromObject(objVal);
         expandBufAdd1(pReply, tag);
         expandBufAddObjectId(pReply, objectToObjectId(objVal));
-        ALOGV("    --> sfieldId %x --> tag '%c' %p", fieldId, tag, objVal);
     } else {
         JValue value;
 
-        ALOGV("    --> sfieldId %x --> tag '%c'", fieldId, tag);
         expandBufAdd1(pReply, tag);
 
         switch (tag) {
@@ -2684,14 +2654,11 @@ JdwpError dvmDbgInvokeMethod(ObjectId threadId, ObjectId objectId,
     Thread* self = dvmThreadSelf();
     ThreadStatus oldStatus = dvmChangeStatus(self, THREAD_VMWAIT);
 
-    ALOGV("    Transferring control to event thread");
     dvmLockMutex(&targetThread->invokeReq.lock);
 
     if ((options & INVOKE_SINGLE_THREADED) == 0) {
-        ALOGV("      Resuming all threads");
         dvmResumeAllThreads(SUSPEND_FOR_DEBUG_EVENT);
     } else {
-        ALOGV("      Resuming event thread only");
         dvmResumeThread(targetThread);
     }
 
@@ -2703,7 +2670,6 @@ JdwpError dvmDbgInvokeMethod(ObjectId threadId, ObjectId objectId,
                           &targetThread->invokeReq.lock);
     }
     dvmUnlockMutex(&targetThread->invokeReq.lock);
-    ALOGV("    Control has returned from event thread");
 
     /* wait for thread to re-suspend itself */
     dvmWaitForSuspend(targetThread);
@@ -2721,9 +2687,7 @@ JdwpError dvmDbgInvokeMethod(ObjectId threadId, ObjectId objectId,
      * so we want to resume the target thread once to keep the books straight.
      */
     if ((options & INVOKE_SINGLE_THREADED) == 0) {
-        ALOGV("      Suspending all threads");
         dvmSuspendAllThreads(SUSPEND_FOR_DEBUG_EVENT);
-        ALOGV("      Resuming event thread to balance the count");
         dvmResumeThread(targetThread);
     }
 
@@ -2790,22 +2754,11 @@ void dvmDbgExecuteMethod(DebugInvokeReq* pReq)
 
     assert(sizeof(jvalue) == sizeof(u8));
 
-    IF_ALOGV() {
-        char* desc = dexProtoCopyMethodDescriptor(&meth->prototype);
-        ALOGV("JDWP invoking method %p/%p %s.%s:%s",
-            pReq->method, meth, meth->clazz->descriptor, meth->name, desc);
-        free(desc);
-    }
-
     dvmCallMethodA(self, meth, pReq->obj, false, &pReq->resultValue,
         (jvalue*)pReq->argArray);
     pReq->exceptObj = objectToObjectId(dvmGetException(self));
     pReq->resultTag = getReturnTypeBasicTag(meth);
     if (pReq->exceptObj != 0) {
-        Object* exc = dvmGetException(self);
-        ALOGD("  JDWP invocation returning with exceptObj=%p (%s)",
-            exc, exc->clazz->descriptor);
-        //dvmLogExceptionStackTrace();
         dvmClearException(self);
         /*
          * Nothing should try to use this, but it looks like something is.
@@ -2958,8 +2911,6 @@ void dvmDbgDdmSendChunk(int type, size_t len, const u1* buf)
 void dvmDbgDdmSendChunkV(int type, const struct iovec* iov, int iovcnt)
 {
     if (gDvm.jdwpState == NULL) {
-        ALOGV("Debugger thread not active, ignoring DDM send (t=0x%08x)",
-            type);
         return;
     }
 

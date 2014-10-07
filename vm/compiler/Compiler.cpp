@@ -188,9 +188,6 @@ bool dvmCompilerSetupCodeCache(void)
 
     gDvmJit.pageSizeMask = getpagesize() - 1;
 
-    /* This can be found through "dalvik-jit-code-cache" in /proc/<pid>/maps */
-    // ALOGD("Code cache starts at %p", gDvmJit.codeCache);
-
 #ifndef ARCH_IA32
     /* Copy the template code into the beginning of the code cache */
     int templateSize = (intptr_t) dvmCompilerTemplateEnd -
@@ -241,31 +238,9 @@ static void crawlDalvikStack(Thread *thread, bool print)
     StackSaveArea* saveArea = NULL;
     int stackLevel = 0;
 
-    if (print) {
-        ALOGD("Crawling tid %d (%s / %p %s)", thread->systemTid,
-             dvmGetThreadStatusStr(thread->status),
-             thread->inJitCodeCache,
-             thread->inJitCodeCache ? "jit" : "interp");
-    }
     /* Crawl the Dalvik stack frames to clear the returnAddr field */
     while (fp != NULL) {
         saveArea = SAVEAREA_FROM_FP(fp);
-
-        if (print) {
-            if (dvmIsBreakFrame((u4*)fp)) {
-                ALOGD("  #%d: break frame (%p)",
-                     stackLevel, saveArea->returnAddr);
-            }
-            else {
-                ALOGD("  #%d: %s.%s%s (%p)",
-                     stackLevel,
-                     saveArea->method->clazz->descriptor,
-                     saveArea->method->name,
-                     dvmIsNativeMethod(saveArea->method) ?
-                         " (native)" : "",
-                     saveArea->returnAddr);
-            }
-        }
         stackLevel++;
         saveArea->returnAddr = NULL;
         assert(fp != saveArea->prevFrame);
@@ -279,9 +254,7 @@ static void crawlDalvikStack(Thread *thread, bool print)
 static void resetCodeCache(void)
 {
     Thread* thread;
-    u8 startTime = dvmGetRelativeTimeUsec();
     int inJit = 0;
-    int byteUsed = gDvmJit.codeCacheByteUsed;
 
     /* If any thread is found stuck in the JIT state, don't reset the cache  */
     dvmLockThreadList(NULL);
@@ -302,9 +275,6 @@ static void resetCodeCache(void)
     dvmUnlockThreadList();
 
     if (inJit) {
-        ALOGD("JIT code cache reset delayed (%d bytes %d/%d)",
-             gDvmJit.codeCacheByteUsed, gDvmJit.numCodeCacheReset,
-             ++gDvmJit.numCodeCacheResetDelayed);
         return;
     }
 
@@ -362,11 +332,6 @@ static void resetCodeCache(void)
     gDvmJit.codeCacheFull = false;
 
     dvmUnlockMutex(&gDvmJit.compilerLock);
-
-    ALOGD("JIT code cache reset in %lld ms (%d bytes %d/%d)",
-         (dvmGetRelativeTimeUsec() - startTime) / 1000,
-         byteUsed, ++gDvmJit.numCodeCacheReset,
-         gDvmJit.numCodeCacheResetDelayed);
 }
 
 /*
@@ -629,12 +594,10 @@ static void *compilerThreadStart(void *arg)
             pthread_cond_wait(&gDvmJit.compilerQueueActivity,
                               &gDvmJit.compilerLock);
             dvmUnlockMutex(&gDvmJit.compilerLock);
-            ALOGD("JIT started for system_server");
         } else {
             dvmLockMutex(&gDvmJit.compilerLock);
             /*
-             * TUNING: experiment with the delay & perhaps make it
-             * target-specific
+             * TUNING: experiment with the delay & perhaps make it target-specific
              */
             dvmRelativeCondWait(&gDvmJit.compilerQueueActivity,
                                  &gDvmJit.compilerLock, 3000, 0);
@@ -697,7 +660,6 @@ static void *compilerThreadStart(void *arg)
                     gDvmJit.codeCacheFull |= resizeFail;
                 }
                 if (gDvmJit.haltCompilerThread) {
-                    ALOGD("Compiler shutdown in progress - discarding request");
                 } else if (!gDvmJit.codeCacheFull) {
                     jmp_buf jmpBuf;
                     work.bailPtr = &jmpBuf;
@@ -742,8 +704,6 @@ static void *compilerThreadStart(void *arg)
      */
     dvmChangeStatus(NULL, THREAD_RUNNING);
 
-    if (gDvm.verboseShutdown)
-        ALOGD("Compiler thread shutting down");
     return NULL;
 }
 
@@ -797,8 +757,6 @@ void dvmCompilerShutdown(void)
 
         if (pthread_join(gDvmJit.compilerHandle, &threadReturn) != 0)
             ALOGW("Compiler thread join failed");
-        else if (gDvm.verboseShutdown)
-            ALOGD("Compiler thread has shut down");
     }
 
     /* Break loops within the translation cache */

@@ -53,9 +53,7 @@ extern int jniRegisterSystemMethods(JNIEnv* env);
 
 /* fwd */
 static bool registerSystemNatives(JNIEnv* pEnv);
-static bool initJdwp();
 static bool initZygote();
-
 
 /* global state */
 struct DvmGlobals gDvm;
@@ -537,7 +535,6 @@ void dvmLateEnableAssertions()
         ALOGD("Not late-enabling assertions: some asserts already configured");
         return;
     }
-    ALOGD("Late-enabling assertions");
 
     /* global enable for all but system */
     AssertionControl* pCtrl = gDvm.assertionCtrl;
@@ -783,10 +780,6 @@ static int processOptions(int argc, const char* const argv[],
     bool ignoreUnrecognized)
 {
     int i;
-
-    ALOGV("VM options (%d):", argc);
-    for (i = 0; i < argc; i++)
-        ALOGV("  %d: '%s'", i, argv[i]);
 
     /*
      * Over-allocate AssertionControl array for convenience.  If allocated,
@@ -1192,7 +1185,6 @@ static int processOptions(int argc, const char* const argv[],
                 dvmFprintf(stderr, "Bad value for -Xgc");
                 return -1;
             }
-            ALOGV("Precise GC configured %s", gDvm.preciseGc ? "ON" : "OFF");
 
         } else if (strcmp(argv[i], "-Xcheckdexsum") == 0) {
             gDvm.verifyDexChecksum = true;
@@ -1388,10 +1380,6 @@ std::string dvmStartup(int argc, const char* const argv[],
 
     assert(gDvm.initializing);
 
-    ALOGV("VM init args (%d):", argc);
-    for (int i = 0; i < argc; i++) {
-        ALOGV("  %d: '%s'", i, argv[i]);
-    }
     setCommandLineDefaults();
 
     /*
@@ -1416,10 +1404,7 @@ std::string dvmStartup(int argc, const char* const argv[],
 
     /* Configure group scheduling capabilities */
     if (!access("/dev/cpuctl/tasks", F_OK)) {
-        ALOGV("Using kernel group scheduling");
         gDvm.kernelGroupScheduling = 1;
-    } else {
-        ALOGV("Using kernel scheduler policies");
     }
 
     /* configure signal handling */
@@ -1433,7 +1418,6 @@ std::string dvmStartup(int argc, const char* const argv[],
     }
 
     /* mterp setup */
-    ALOGV("Using executionMode %d", gDvm.executionMode);
     dvmCheckAsmConstants();
 
     /*
@@ -1769,7 +1753,6 @@ mounted_slave:
         // Older kernels don't understand PR_SET_NO_NEW_PRIVS and return
         // EINVAL. Don't die on such kernels.
         if (errno != EINVAL) {
-            SLOGE("PR_SET_NO_NEW_PRIVS failed: %s", strerror(errno));
             return -1;
         }
     }
@@ -1819,15 +1802,8 @@ bool dvmInitAfterZygote()
      * "suspend=y", this will pause the VM.  We probably want this to
      * come last.
      */
-    if (!initJdwp()) {
-        ALOGD("JDWP init failed; continuing anyway");
-    }
 
     endJdwp = dvmGetRelativeTimeUsec();
-
-    ALOGV("thread-start heap=%d quit=%d jdwp=%d total=%d usec",
-        (int)(endHeap-startHeap), (int)(endQuit-startQuit),
-        (int)(endJdwp-startJdwp), (int)(endJdwp-startHeap));
 
 #ifdef WITH_JIT
     if (gDvm.executionMode == kExecutionModeJit) {
@@ -1835,74 +1811,6 @@ bool dvmInitAfterZygote()
             return false;
     }
 #endif
-
-    return true;
-}
-
-/*
- * Prepare for a connection to a JDWP-compliant debugger.
- *
- * Note this needs to happen fairly late in the startup process, because
- * we need to have all of the java.* native methods registered (which in
- * turn requires JNI to be fully prepped).
- *
- * There are several ways to initialize:
- *   server=n
- *     We immediately try to connect to host:port.  Bail on failure.  On
- *     success, send VM_START (suspending the VM if "suspend=y").
- *   server=y suspend=n
- *     Passively listen for a debugger to connect.  Return immediately.
- *   server=y suspend=y
- *     Wait until debugger connects.  Send VM_START ASAP, suspending the
- *     VM after the message is sent.
- *
- * This gets more complicated with a nonzero value for "timeout".
- */
-static bool initJdwp()
-{
-    assert(!gDvm.zygote);
-
-    /*
-     * Init JDWP if the debugger is enabled.  This may connect out to a
-     * debugger, passively listen for a debugger, or block waiting for a
-     * debugger.
-     */
-    if (gDvm.jdwpAllowed && gDvm.jdwpConfigured) {
-        JdwpStartupParams params;
-
-        if (gDvm.jdwpHost != NULL) {
-            if (strlen(gDvm.jdwpHost) >= sizeof(params.host)-1) {
-                ALOGE("ERROR: hostname too long: '%s'", gDvm.jdwpHost);
-                return false;
-            }
-            strcpy(params.host, gDvm.jdwpHost);
-        } else {
-            params.host[0] = '\0';
-        }
-        params.transport = gDvm.jdwpTransport;
-        params.server = gDvm.jdwpServer;
-        params.suspend = gDvm.jdwpSuspend;
-        params.port = gDvm.jdwpPort;
-
-        gDvm.jdwpState = dvmJdwpStartup(&params);
-        if (gDvm.jdwpState == NULL) {
-            ALOGW("WARNING: debugger thread failed to initialize");
-            /* TODO: ignore? fail? need to mimic "expected" behavior */
-        }
-    }
-
-    /*
-     * If a debugger has already attached, send the "welcome" message.  This
-     * may cause us to suspend all threads.
-     */
-    if (dvmJdwpIsActive(gDvm.jdwpState)) {
-        //dvmChangeStatus(NULL, THREAD_RUNNING);
-        if (!dvmJdwpPostVMStart(gDvm.jdwpState, gDvm.jdwpSuspend)) {
-            ALOGW("WARNING: failed to post 'start' message to debugger");
-            /* keep going */
-        }
-        //dvmChangeStatus(NULL, THREAD_NATIVE);
-    }
 
     return true;
 }
@@ -1998,8 +1906,6 @@ fail:
  */
 void dvmShutdown()
 {
-    ALOGV("VM shutting down");
-
     if (CALC_CACHE_STATS)
         dvmDumpAtomicCacheStats(gDvm.instanceofCache);
 
@@ -2036,9 +1942,6 @@ void dvmShutdown()
      * the VM shuts down.
      */
     dvmSlayDaemons();
-
-    if (gDvm.verboseShutdown)
-        ALOGD("VM cleaning up");
 
     dvmDebuggerShutdown();
     dvmProfilingShutdown();
