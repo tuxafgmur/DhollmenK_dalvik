@@ -1698,9 +1698,6 @@ static bool initZygote()
             // ANDROID_STORAGE successfully marked as slave, leave the rest of the
             // filesystem hierarchy marked as shared.
             goto mounted_slave;
-        } else {
-            // Warn only, init.rc is likely missing a tmpfs mount for ANDROID_STORAGE.
-            SLOGW("Failed to mount %s as MS_SLAVE: %s", storage_base, strerror(errno));
         }
     } else {
         SLOGW("ANDROID_STORAGE environment variable undefined");

@@ -86,15 +86,10 @@ static void sigchldHandler(int s)
            of syscalls within the lazy-init critical section, its use here may
            become unsafe. */
         if (WIFEXITED(status)) {
-            if (WEXITSTATUS(status)) {
-                ALOG(LOG_DEBUG, ZYGOTE_LOG_TAG, "Process %d exited cleanly (%d)",
+            IF_ALOGV(/*should use ZYGOTE_LOG_TAG*/) {
+                ALOG(LOG_VERBOSE, ZYGOTE_LOG_TAG,
+                    "Process %d exited cleanly (%d)",
                     (int) pid, WEXITSTATUS(status));
-            } else {
-                IF_ALOGV(/*should use ZYGOTE_LOG_TAG*/) {
-                    ALOG(LOG_VERBOSE, ZYGOTE_LOG_TAG,
-                        "Process %d exited cleanly (%d)",
-                        (int) pid, WEXITSTATUS(status));
-                }
             }
         } else if (WIFSIGNALED(status)) {
             if (WTERMSIG(status) != SIGKILL) {
@@ -300,7 +295,6 @@ static int mountEmulatedStorage(uid_t uid, u4 mountMode) {
         // EMULATED_STORAGE_SOURCE must already serve as a mountpoint, which it
         // should for the "sdcard" fuse volume.
         if (mount(NULL, source, NULL, (MS_SLAVE | MS_REC), NULL) == -1) {
-            SLOGW("Failed to mount %s as MS_SLAVE: %s", source, strerror(errno));
 
             // Fallback: Mark rootfs as slave.  All mounts under "/" will be hidden
             // from other apps and users.  This shouldn't happen unless the sdcard
